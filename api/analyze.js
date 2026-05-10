@@ -1,21 +1,34 @@
 export default async function handler(req, res) {
-  if (req.method!== 'POST') return res.status(405).json({ error: 'Method not allowed' });
-  const { coins, topics, chatHistory, newsContext } = req.body;
-  const date = new Date().toLocaleString('id-ID');
-  let prompt = "";
-  if (chatHistory) {
-    const system = `Anda AI Analyst crypto. Waktu: ${date}. Koin dipantau: ${coins.join(", ")}. Jawab singkat bahasa Indonesia.`;
-    const messages = [{ role: "system", content: system },...chatHistory.map(m => ({ role: m.role === "model"? "assistant" : "user", content: m.text }))];
-    const openrouterRes = await fetch("https://openrouter.ai/api/v1/chat/completions", { method: "POST", headers: { "Content-Type": "application/json", "Authorization": `Bearer ${process.env.OPENROUTER_API_KEY}` }, body: JSON.stringify({ model: "google/gemini-flash-1.5", messages }) });
-    const data = await openrouterRes.json();
-    return res.status(200).json({ text: data.choices[0].message.content });
-  } else {
-    prompt = `Waktu: ${date}. Berdasarkan berita:\n${newsContext}\n\nBuat analisis sinyal trading untuk koin: ${coins.join(", ")}. Balas HANYA JSON: {"signals":[{"symbol":"BTC","action":"BUY","sentiment":"BULLISH","confidence":75,"target":"+8%","timeframe":"24-48 jam","reason":"Momentum naik","risk":"MEDIUM"}],"summary":"Pasar bullish"}`;
-  }
+  const { coin } = req.query;
+  if (!coin) return res.status(400).json({ error: 'Isi nama coin' });
+  
   try {
-    const openrouterRes = await fetch("https://openrouter.ai/api/v1/chat/completions", { method: "POST", headers: { "Content-Type": "application/json", "Authorization": `Bearer ${process.env.OPENROUTER_API_KEY}` }, body: JSON.stringify({ model: "google/gemini-flash-1.5", messages: [{ role: "user", content: prompt }] }) });
-    const data = await openrouterRes.json();
-    const text = data.choices[0].message.content;
-    res.status(200).json({ text });
-  } catch(e) { res.status(500).json({ error: e.message }); }
+    const prompt = `Kamu AI Analyst crypto. Analisis ${coin} sekarang. Format: 1. Tren: Bullish/Bearish 2. Support & Resistance 3. Sinyal: Buy/Sell/Hold 4. Alasan 1 kalimat. Jawab langsung.`;
+
+    const aiRes = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${process.env.OPENROUTER_API_KEY}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        model: 'mistralai/mistral-7b-instruct',
+        messages: [{ role: 'user', content: prompt }]
+      })
+    });
+
+    const data = await aiRes.json();
+    
+    if (data.error) {
+      return res.status(500).json({ error: data.error.message });
+    }
+
+    res.status(200).json({ 
+      berita: 'Analisis AI langsung untuk ' + coin,
+      analisis: data.choices[0].message.content 
+    });
+
+  } catch (error) {
+    res.status(500).json({ error: 'Gagal: ' + error.message });
+  }
 }
